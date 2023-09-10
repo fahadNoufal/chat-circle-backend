@@ -1,14 +1,13 @@
 from django.shortcuts import render,redirect
 from django.db.models import Q
 import random
-from django.contrib.auth.models import User
 from rest_framework.decorators import api_view,permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.contrib.auth import login,logout,authenticate
 # from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.decorators import login_required
-from .models import Room,Topic,Message
+from .models import Room,Topic,Message,User
 from api.serializers import RoomSerializer,UserSerializer,MessageSerializer,TopicSerializer
 from .forms import EditUserForm
 
@@ -31,10 +30,11 @@ class MyTokenObtainPairView(TokenObtainPairView):
 def rooms(request):
     q=request.GET.get('q') if request.GET.get('q') else ''
     rooms=Room.objects.filter(Q(name__icontains=q)| Q(host__username__icontains=q)| Q(topic__name__icontains=q)|Q(description__icontains=q))
+    roomLength=len(rooms)
 
     # user=if (request.user.id) return User.objects.get(pk=request.user.id) else None
 
-    serializer=RoomSerializer(rooms,many=True)
+    serializer=RoomSerializer(rooms[:15],many=True)
     def get_random_users(count):
     # Get the total number of users in the User model
         total_users = User.objects.count()
@@ -50,7 +50,7 @@ def rooms(request):
     activities=Message.objects.all()[:3]
     activities_ser=MessageSerializer(activities,many=True)
     discover_people=UserSerializer(random_users,many=True)
-    data={'rooms':serializer.data,'topics':topics_ser.data,'messages':activities_ser.data,'discover_users':discover_people.data}
+    data={'rooms':serializer.data,'topics':topics_ser.data,'room_count':roomLength,'messages':activities_ser.data,'discover_users':discover_people.data}
     return Response(data)
 
 @api_view(['GET'])
@@ -67,7 +67,7 @@ def roomViewApi(request,pk):
     room_messages=roomItem.message_set.all().order_by('-created')
     room_messages_serializer=MessageSerializer(room_messages,many=True)
     room_serializer=RoomSerializer(roomItem)
-    
+
     data = {
         'roomItem': room_serializer.data,
         'room_messages': room_messages_serializer.data,
@@ -110,16 +110,22 @@ def create_room(request):
     return (False)
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
+
+@api_view(["POST","GET"])
+# @permission_classes([IsAuthenticated])
 def update_room(request,pk):
-    if not request.user.is_authenticated:
-        return Response('unauthorized') 
     room=Room.objects.get(pk=pk)
-    serializer=RoomSerializer(instance=room,data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-    return Response(serializer.data)
+    if request.method == 'POST':
+        serializer=RoomSerializer(instance=room,data=request.data,partial=True) #set host (search)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        else : return Response(serializer.errors)
+
+    if request.method == 'GET':
+        serializer=RoomSerializer(room)
+        return Response(serializer.data)    
+        
 
 
 @api_view(["GET"])
@@ -160,23 +166,24 @@ def login_user(request):
 def register_user(request):
     data=request.data
     username=data.get('username')
+    name=data.get('name')
+    avatar=data.get('avatar')
+    email=data.get('email')
     password=data.get('password')
-    confirm_password=data.get('confirm_password')
+    confirm_password=data.get('confirm-password')
     if password!= confirm_password :
         return Response("Passwords do not match")
-    user=User.objects.create_user(username,password=password)
+    user=User.objects.create_user(username,password=password,email=email,name=name,avatar=avatar)
     if user is not None :
         user.username=user.username.lower()
         user.save()
-        login(request,user)
-        return redirect('rooms')
+        return Response("registered")
     else :
         return Response(False)
 
 @api_view(['GET'])
 def logout_user(request):
-    logout(request)
-    return redirect('rooms')
+    return logout(request)
 
 @api_view(["GET"])
 def user_profile(request,pk):
@@ -190,9 +197,10 @@ def user_profile(request,pk):
     messages=MessageSerializer(messages,many=True)
 
     rooms=user.room_set.all()
-    rooms=RoomSerializer(rooms,many=True)
+    room_count=len(rooms)
+    rooms=RoomSerializer(rooms[:15],many=True)
 
-    user_profile_data={'topics': topics.data,'messages': messages.data,'rooms': rooms.data,'host':serializer.data}
+    user_profile_data={'topics': topics.data,'messages': messages.data,'room_count':room_count,'rooms': rooms.data,'host':serializer.data}
 
     return Response(user_profile_data)
 
@@ -209,12 +217,14 @@ def edit_profile(request):
 
 @api_view(["GET"])
 def topics_view(request):
+    rooms=Room.objects.all()
+    roomLength=len(rooms)
     topics=Topic.objects.all()
     serializer=TopicSerializer(topics,many=True)
-    return Response(serializer.data)
+    return Response({'room_count':roomLength, 'topics':serializer.data})
 
 @api_view(["GET"])
 def activities_view(request):
-    activities=Message.objects.all()
+    activities=Message.objects.all()[:15]
     serializer=MessageSerializer(activities,many=True)
-    return Response(serializer.data)
+    return Response({'messages':serializer.data})

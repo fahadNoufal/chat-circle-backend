@@ -1,6 +1,5 @@
 from rest_framework import serializers
-from .models import Room,Message,Topic
-from django.contrib.auth.models import User
+from .models import Room,Message,Topic,User
 from django.utils.timesince import timesince
 from rest_framework import serializers
 
@@ -15,7 +14,7 @@ class TopicSerializer(serializers.ModelSerializer):
 class HostSerializer(serializers.ModelSerializer):
     class Meta:
         model=User
-        fields=['id', 'username']#add profile pic
+        fields=['id', 'username','avatar']#add profile pic
 
 
 
@@ -28,16 +27,25 @@ class RoomSerializer(serializers.ModelSerializer):
     class Meta:
         model=Room
         fields=['id','name','description','host','topic','timesince_field','participants']
+        read_only_fields = ['host']
     def get_timesince_field(self, obj):
         return timesince(obj.created).split(',')[0]
     def get_participants(self, obj):
         return [HostSerializer(participant).data for participant in obj.participants.all()]
+    
+    def update(self, instance, validated_data):
+        topic_data = validated_data.pop('topic', None)
+        if topic_data:
+            topic_name = topic_data.get('name')
+            topic, created = Topic.objects.get_or_create(name=topic_name)
+            instance.topic = topic
+        return super().update(instance, validated_data)
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model=User
-        fields=['id', 'username','first_name','last_name','email','date_joined']
+        fields=['id', 'username','first_name','last_name','email','bio','avatar','name','date_joined']
 
     
 class MessageSerializer(serializers.ModelSerializer):

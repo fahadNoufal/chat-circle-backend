@@ -47,11 +47,17 @@ INSTALLED_APPS = [
     'corsheaders',
 ]
 
+AUTH_USER_MODEL='api.User'
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     )
 }
+
+MEDIA_URL='/images/'
+
+MEDIA_ROOT = BASE_DIR / "static/images"
 
 
 SIMPLE_JWT = {
